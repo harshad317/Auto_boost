@@ -5,25 +5,24 @@ Kaggle workflow. It handles missing values, categorical encoding, cross-validate
 training, and submission generation for gradient-boosting models (LightGBM,
 XGBoost, or CatBoost) without needing to run a notebook.
 
-## Requirements
+## Installation
 
-- Python 3.8+
-- pandas, numpy, scikit-learn
-- At least one of: `lightgbm`, `xgboost`, `catboost` (install only what you need)
-
-Example setup:
+Install directly from the repo root (or future wheel/PyPI artifact):
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-pip install pandas numpy scikit-learn lightgbm xgboost catboost
+pip install .  # add '.[lightgbm]' or other extras if you need specific boosters
 ```
+
+Base dependencies are `pandas`, `numpy`, and `scikit-learn`. Install at least one
+booster extra (`lightgbm`, `xgboost`, `catboost`) depending on what you plan to run.
 
 ## Quickstart
 
 ```bash
-python auto_boost.py \
+auto-boost \
   --train train.csv \
   --test test.csv \
   --target Transported \
@@ -46,7 +45,8 @@ Key flags:
 - `--metric`: auto-detected if omitted (`accuracy` for classification, `rmse` for regression).
 - `--output`: optional CSV to save predictions (includes ID column when `--id-col` is supplied).
 
-Run `python auto_boost.py --help` for the full reference.
+Run `auto-boost --help` for the full reference. The legacy `python auto_boost.py`
+shim is still provided for local scripts and backwards compatibility.
 
 ## About the Notebook
 
