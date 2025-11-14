@@ -3,20 +3,39 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "auto-boost"
-version = "0.1.0"
+name = "auto_boost"
+dynamic = ["version"]
 description = "CLI utility for training boosting models with automated preprocessing."
 readme = "README.md"
 requires-python = ">=3.8"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 authors = [
-  { name = "Harshad", email = "harshad317@example.com" },
+  { name = "Harshad", email = "harsh.patil317.hp@gmail.com" },
+]
+maintainers = [
+  { name = "Harshad", email = "harsh.patil317.hp@gmail.com" },
+]
+keywords = ["automl", "gradient-boosting", "kaggle", "machine-learning", "cli"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
   "pandas>=1.3",
   "numpy>=1.21",
   "scikit-learn>=1.0",
 ]
+
+[project.urls]
+"Homepage" = "https://github.com/hpu4454/Auto_boost"
+"Bug Tracker" = "https://github.com/hpu4454/Auto_boost/issues"
 
 [project.optional-dependencies]
 lightgbm = ["lightgbm>=3.3"]
@@ -25,6 +44,7 @@ catboost = ["catboost>=1.0"]
 
 [project.scripts]
 auto-boost = "auto_boost.cli:main"
+auto_boost = "auto_boost.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -32,3 +52,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 exclude = ["*.tests"]
+
+[tool.setuptools.dynamic]
+version = { attr = "auto_boost.__version__" }
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

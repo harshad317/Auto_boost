@@ -7,13 +7,21 @@ XGBoost, or CatBoost) without needing to run a notebook.
 
 ## Installation
 
-Install directly from the repo root (or future wheel/PyPI artifact):
+### From PyPI (recommended)
+
+```bash
+python -m pip install --upgrade auto_boost
+# or include extras:
+python -m pip install "auto_boost[lightgbm]"
+```
+
+### From source
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -U pip
-pip install .  # add '.[lightgbm]' or other extras if you need specific boosters
+python -m pip install --upgrade pip
+python -m pip install ".[lightgbm,xgboost]"  # select any boosters you need
 ```
 
 Base dependencies are `pandas`, `numpy`, and `scikit-learn`. Install at least one
@@ -45,8 +53,52 @@ Key flags:
 - `--metric`: auto-detected if omitted (`accuracy` for classification, `rmse` for regression).
 - `--output`: optional CSV to save predictions (includes ID column when `--id-col` is supplied).
 
-Run `auto-boost --help` for the full reference. The legacy `python auto_boost.py`
-shim is still provided for local scripts and backwards compatibility.
+Run `auto-boost --help` (or `auto_boost --help`) for the full reference. The legacy
+`python auto_boost.py` shim has been removed in favor of the installable entrypoints.
+
+## Development & Packaging
+
+For local development install in editable mode:
+
+```bash
+python -m pip install --upgrade pip build twine
+python -m pip install -e ".[lightgbm]"
+```
+
+To produce distributable artifacts (wheel + sdist):
+
+```bash
+python -m pip install build
+python -m build
+ls dist/
+```
+
+The files under `dist/` can be uploaded with `twine upload dist/*` when
+publishing to PyPI. Generated folders such as `dist/`, `*.egg-info`, and
+`__pycache__` are ignored via `.gitignore`.
+
+### Releasing to TestPyPI / PyPI
+
+Following the official [Packaging Python Projects](https://packaging.python.org/en/latest/tutorials/packaging-projects/#uploading-your-project-to-pypi) guide:
+
+```bash
+# Build fresh artifacts
+rm -rf dist/
+python -m build
+
+# Upload to TestPyPI first
+python -m twine upload --repository testpypi dist/*
+
+# Verify install from TestPyPI (optional)
+python -m pip install --index-url https://test.pypi.org/simple/ \
+  --extra-index-url https://pypi.org/simple auto_boost
+
+# When satisfied, push to PyPI for public install via:
+# python -m pip install auto_boost
+python -m twine upload dist/*
+```
+
+Bump `auto_boost.__version__` before every upload to avoid version conflicts.
 
 ## About the Notebook
 
