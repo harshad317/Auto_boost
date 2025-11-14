@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import argparse
 import inspect
+import json
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -24,7 +25,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.model_selection import KFold, StratifiedKFold
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler, RobustScaler, StandardScaler
 
 try:
     from lightgbm import LGBMClassifier, LGBMRegressor
@@ -92,12 +93,45 @@ def parse_args() -> argparse.Namespace:
         help="Name of the prediction column in the saved submission file.",
     )
     parser.add_argument("--output", help="Optional path to save predictions as CSV.")
+    parser.add_argument(
+        "--drop-cols",
+        nargs="*",
+        default=None,
+        help="Optional columns to drop before preprocessing (IDs, leakage, etc.).",
+    )
+    parser.add_argument(
+        "--scaler",
+        choices=["none", "standard", "minmax", "robust"],
+        default="none",
+        help="Feature scaling strategy applied after encoding.",
+    )
+    parser.add_argument(
+        "--save-feature-importance",
+        help="Optional CSV path to persist the averaged feature importances.",
+    )
+    parser.add_argument(
+        "--save-fold-scores",
+        help="Optional JSON path capturing per-fold metric values.",
+    )
     return parser.parse_args()
 
 
 def require_dependency(obj, package_name: str) -> None:
     if obj is None:
         raise ImportError(f"{package_name} is required for the selected booster but is not installed.")
+
+
+def build_scaler(name: str):
+    """Factory helper to keep CLI parsing separate from sklearn details."""
+    if name == "standard":
+        return StandardScaler()
+    if name == "minmax":
+        return MinMaxScaler()
+    if name == "robust":
+        return RobustScaler()
+    if name == "none":
+        return None
+    raise ValueError(f"Unsupported scaler {name}")
 
 
 def build_model(args: argparse.Namespace):
@@ -169,6 +203,8 @@ def build_model(args: argparse.Namespace):
 
 
 class AutoBoost:
+    """Self-contained pipeline orchestrating preprocessing, CV training, and ensembling."""
+
     def __init__(
         self,
         estimator,
@@ -178,6 +214,7 @@ class AutoBoost:
         random_state: int,
         early_stopping_rounds: int,
         verbose: int,
+        scaler=None,
     ):
         self.estimator = estimator
         self.model_type = model_type
@@ -187,13 +224,23 @@ class AutoBoost:
         self.early_stopping_rounds = early_stopping_rounds
         self.verbose = verbose
         self.uses_proba = metric in PROBA_METRICS
+        self.scaler = scaler
 
     def preprocess(self, train_df: pd.DataFrame, test_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """Mirror notebook behaviour by stacking train/test, cleaning once, then splitting."""
         combined = pd.concat([train_df, test_df], axis=0, ignore_index=True)
         combined = self.fill_missing_values(combined)
         combined = self.categorical_columns(combined)
         train_processed = combined.iloc[: len(train_df)].reset_index(drop=True)
         test_processed = combined.iloc[len(train_df) :].reset_index(drop=True)
+
+        if self.scaler is not None and not train_processed.empty:
+            scaler = clone(self.scaler)
+            numeric_cols = train_processed.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 0:
+                scaler.fit(train_processed[numeric_cols])
+                train_processed[numeric_cols] = scaler.transform(train_processed[numeric_cols])
+                test_processed[numeric_cols] = scaler.transform(test_processed[numeric_cols])
         return train_processed, test_processed
 
     def fill_missing_values(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -406,6 +453,7 @@ def main() -> None:
         raise ValueError(f"Metric '{metric}' is not supported for regression.")
 
     estimator = build_model(args)
+    scaler = build_scaler(args.scaler)
     model = AutoBoost(
         estimator=estimator,
         model_type=args.model_type,
@@ -414,17 +462,29 @@ def main() -> None:
         random_state=args.random_state,
         early_stopping_rounds=args.early_stopping_rounds,
         verbose=args.verbose,
+        scaler=scaler,
     )
 
     feature_columns = train_df.drop(columns=[args.target])
     test_features = test_df.copy()
 
-    if args.id_col and args.id_col in feature_columns.columns:
-        feature_columns = feature_columns.drop(columns=[args.id_col])
-    if args.id_col and args.id_col in test_features.columns:
-        test_features_no_id = test_features.drop(columns=[args.id_col])
-    else:
-        test_features_no_id = test_features
+    drop_cols = set(args.drop_cols or [])
+    if args.id_col:
+        drop_cols.add(args.id_col)
+
+    if drop_cols:
+        # Only drop the columns that actually exist and warn about typos.
+        existing_train = [col for col in drop_cols if col in feature_columns.columns]
+        existing_test = [col for col in drop_cols if col in test_features.columns]
+        if existing_train:
+            feature_columns = feature_columns.drop(columns=existing_train)
+        if existing_test:
+            test_features = test_features.drop(columns=existing_test)
+        missing_cols = drop_cols - set(existing_train) - set(existing_test)
+        if missing_cols:
+            print(f"Warning: drop columns not found and skipped: {sorted(missing_cols)}")
+
+    test_features_no_id = test_features
 
     target_series = train_df[args.target]
     target_is_bool = is_bool_dtype(target_series)
@@ -456,6 +516,16 @@ def main() -> None:
         top_features = feature_importance.head(15)
         print("Top features:")
         print(top_features.to_string(index=False))
+        if args.save_feature_importance:
+            fi_path = Path(args.save_feature_importance)
+            feature_importance.to_csv(fi_path, index=False)
+            print(f"Feature importance saved to {fi_path}")
+
+    if args.save_fold_scores:
+        fold_path = Path(args.save_fold_scores)
+        with fold_path.open("w") as fp:
+            json.dump(result["fold_scores"], fp, indent=2)
+        print(f"Fold scores saved to {fold_path}")
 
 
 if __name__ == "__main__":
